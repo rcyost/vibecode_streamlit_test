@@ -126,17 +126,17 @@ def add_network_css():
 
 # Add this function after the other utility functions
 def get_example_network():
-    """Create an example network with meaningful labels and connections"""
-    # Example network: Political influence network
-    labels = ["President", "Congress", "Supreme Court", "Media", "Voters"]
+    """Create an example network with Trump administration officials"""
+    # Trump administration key figures
+    labels = ["Donald Trump", "Mike Pence", "Steve Bannon", "Jared Kushner", "Ivanka Trump"]
     
     # Create example adjacency matrix with meaningful connections
     example_matrix = pd.DataFrame([
-        [0.0, 0.8, 0.6, 0.7, 0.5],  # President's influence
-        [0.7, 0.0, 0.4, 0.6, 0.8],  # Congress's influence
-        [0.5, 0.5, 0.0, 0.3, 0.4],  # Supreme Court's influence
-        [0.6, 0.7, 0.3, 0.0, 0.9],  # Media's influence
-        [0.4, 0.8, 0.2, 0.5, 0.0],  # Voters' influence
+        [0.0, 0.8, 0.7, 0.9, 0.9],  # Trump's influence
+        [0.6, 0.0, 0.5, 0.6, 0.6],  # Pence's influence
+        [0.7, 0.4, 0.0, 0.5, 0.5],  # Bannon's influence
+        [0.8, 0.5, 0.4, 0.0, 0.9],  # Kushner's influence
+        [0.8, 0.5, 0.4, 0.9, 0.0],  # Ivanka's influence
     ], index=labels, columns=labels)
     
     return example_matrix
@@ -156,11 +156,13 @@ with st.sidebar:
     
     # Initialize session state for example data if not exists
     if 'example_data' not in st.session_state:
-        st.session_state.example_data = None
-    
+        # Automatically load example data on first run
+        st.session_state.example_data = get_example_network()
+        
     upload_method = st.radio(
         "Choose input method",
-        ["Upload CSV", "Manual Input", "Load Example"]
+        ["Load Example", "Upload CSV", "Manual Input"],  # Reordered to make example first
+        index=0  # Default to Load Example
     )
     
     if upload_method == "Upload CSV":
@@ -174,12 +176,12 @@ with st.sidebar:
     elif upload_method == "Load Example":
         st.write("Example: Political Influence Network")
         st.write("This example shows influence relationships between different political actors.")
-        if st.button("Load Example Network"):
-            example_matrix = get_example_network()
-            # Store example data in session state
-            st.session_state.example_data = example_matrix
-            # Convert to CSV for the uploader
-            csv_data = convert_df_to_csv(example_matrix)
+        if st.session_state.example_data is None:
+            if st.button("Load Example Network"):
+                st.session_state.example_data = get_example_network()
+        # Convert example data to CSV format for the uploader
+        if st.session_state.example_data is not None:
+            csv_data = convert_df_to_csv(st.session_state.example_data)
             uploaded_file = io.BytesIO(csv_data)
     else:
         # Clear example data when switching to manual
@@ -360,6 +362,13 @@ if (upload_method == "Upload CSV" and uploaded_file is not None) or st.session_s
             df = st.session_state.example_data
             adj_matrix = df.values
             node_labels = list(df.index)
+            
+            # Automatically show the network for example data
+            if 'show_network' not in st.session_state:
+                st.session_state.show_network = True
+                st.session_state.network_data = create_network(adj_matrix, node_labels)
+                st.session_state.current_matrix = adj_matrix
+                st.session_state.current_labels = node_labels
         else:
             # Regular CSV handling
             df = pd.read_csv(uploaded_file, index_col=0)
@@ -376,10 +385,10 @@ if (upload_method == "Upload CSV" and uploaded_file is not None) or st.session_s
         with tab0:
             st.header("How to Use This Network Analysis Tool")
             
-            st.subheader("Step 1: Upload CSV")
+            st.subheader("Step 1: Load Example")
             st.write("""
-            - You've already uploaded your CSV file ✅
-            - The matrix has been loaded and is ready for labeling
+            - The example network has been automatically loaded ✅
+            - This political influence network demonstrates relationships between key actors
             """)
             
             st.subheader("Step 2: Enter Node Labels")
