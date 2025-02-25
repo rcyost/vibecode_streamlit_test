@@ -2,93 +2,94 @@
 import streamlit as st
 import pandas as pd
 import networkx as nx
-from pyvis.network import Network
+import plotly.graph_objects as go
 import tempfile
 import json
 from streamlit_elements import elements, dashboard, mui, html
 import io
 
-# Function to create network from adjacency matrix
+# Function to create network visualization using Plotly
 def create_network(adj_matrix, node_labels=None):
     G = nx.from_numpy_array(adj_matrix, create_using=nx.Graph)
     
-    # Create Pyvis network with physics enabled for better layout
-    net = Network(
-        notebook=True, 
-        height="600px", 
-        width="100%",
-        bgcolor="#ffffff",
-        font_color="black",
-        directed=False,
-        select_menu=False,
-        cdn_resources="remote"
+    # Create layout for nodes
+    pos = nx.spring_layout(G)
+    
+    # Create edge traces
+    edge_x = []
+    edge_y = []
+    edge_weights = []
+    edge_texts = []
+    
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.extend([x0, x1, None])
+        edge_y.extend([y0, y1, None])
+        weight = adj_matrix[edge[0]][edge[1]]
+        edge_weights.append(weight)
+        source_label = node_labels[edge[0]] if node_labels else f"Node {edge[0]}"
+        target_label = node_labels[edge[1]] if node_labels else f"Node {edge[1]}"
+        edge_texts.append(f"{source_label} → {target_label}: {weight:.3f}")
+    
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=1, color='black'),
+        hoverinfo='text',
+        text=edge_texts,
+        mode='lines'
     )
-    net.toggle_physics(True)
     
-    # Add nodes with custom labels and red color
+    # Create node traces
+    node_x = []
+    node_y = []
+    node_texts = []
+    
     for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
         label = node_labels[node] if node_labels else f"Node {node}"
-        net.add_node(node, 
-                    label=label, 
-                    title=label,  # Tooltip
-                    font={'size': 20},  # Larger font for labels
-                    color='#FF0000')  # Red color for nodes
+        node_texts.append(label)
     
-    # Add edges with weights and black color
-    for (i, j, weight) in G.edges.data('weight'):
-        if weight > 0:  # Only add edges with non-zero weights
-            # Scale width based on weight (multiply by 5 to make it more visible)
-            width = weight * 5
-            source_label = node_labels[i] if node_labels else f"Node {i}"
-            target_label = node_labels[j] if node_labels else f"Node {j}"
-            # Add edge with weight as label and scaled width
-            net.add_edge(i, j, 
-                        value=weight,  # Edge weight
-                        width=width,   # Visual width of edge
-                        title=f"{source_label} → {target_label}: {weight:.3f}",  # Tooltip showing weight
-                        label=f"{weight:.2f}",  # Label on edge
-                        color='#000000')  # Black color for edges
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        hoverinfo='text',
+        text=node_texts,
+        textposition="top center",
+        textfont=dict(
+            color='black',  # Set node label color to black
+            size=12        # Optional: adjust text size if needed
+        ),
+        marker=dict(
+            color='red',
+            size=20,
+            line=dict(width=2)
+        )
+    )
     
-    # Configure physics and layout options for better visualization
-    net.set_options("""
-    {
-        "physics": {
-            "forceAtlas2Based": {
-                "gravitationalConstant": -50,
-                "centralGravity": 0.01,
-                "springLength": 100,
-                "springConstant": 0.08,
-                "avoidOverlap": 0.5
-            },
-            "maxVelocity": 50,
-            "solver": "forceAtlas2Based",
-            "timestep": 0.35,
-            "stabilization": {
-                "enabled": true,
-                "iterations": 1000,
-                "updateInterval": 25,
-                "fit": true
-            }
-        },
-        "interaction": {
-            "navigationButtons": true,
-            "keyboard": true,
-            "zoomView": true
-        },
-        "layout": {
-            "randomSeed": 42,
-            "improvedLayout": true
-        }
-    }
-    """)
+    # Create the figure
+    fig = go.Figure(
+        data=[edge_trace, node_trace],
+        layout=go.Layout(
+            showlegend=False,
+            hovermode='closest',
+            margin=dict(b=0, l=0, r=0, t=0),
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            plot_bgcolor='white'
+        )
+    )
     
-    # Generate HTML file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp:
-        net.save_graph(tmp.name)
-        with open(tmp.name, 'r', encoding='utf-8') as f:
-            html_data = f.read()
+    # Update layout for better interactivity
+    fig.update_layout(
+        dragmode='pan',
+        width=800,
+        height=600
+    )
     
-    return html_data
+    return fig
 
 # Add this function near the top of the file after imports
 def convert_df_to_csv(df):
@@ -329,13 +330,8 @@ if upload_method == "Manual Input":
     
     with tab3:
         if 'show_network' in st.session_state and st.session_state.show_network:
-            # Add CSS for centered network
-            add_network_css()
-            
-            # Display network in centered container
-            st.markdown('<div class="network-container">', unsafe_allow_html=True)
-            st.components.v1.html(st.session_state.network_data, height=600)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Display network
+            st.plotly_chart(st.session_state.network_data, use_container_width=True)
             
             # Add network metrics
             if 'current_matrix' in st.session_state:
@@ -466,13 +462,8 @@ if (upload_method == "Upload CSV" and uploaded_file is not None) or st.session_s
         
         with tab3:
             if 'show_network' in st.session_state and st.session_state.show_network:
-                # Add CSS for centered network
-                add_network_css()
-                
-                # Display network in centered container
-                st.markdown('<div class="network-container">', unsafe_allow_html=True)
-                st.components.v1.html(st.session_state.network_data, height=600)
-                st.markdown('</div>', unsafe_allow_html=True)
+                # Display network
+                st.plotly_chart(st.session_state.network_data, use_container_width=True)
                 
                 # Add network metrics
                 if 'current_matrix' in st.session_state:
