@@ -428,47 +428,77 @@ if (upload_method == "Upload CSV" and uploaded_file is not None) or st.session_s
             st.info("💡 Tip: Make sure to give your nodes meaningful labels - this will make the network visualization much more useful!")
 
         with tab1:
-            st.write("Node labels from CSV:")
-            csv_node_labels = []
+            st.write("Edit node labels:")
+            edited_node_labels = []
             # Organize node labels in rows of 5
             for i in range(0, size, 5):
                 cols = st.columns(min(5, size - i))
                 for j, col in enumerate(cols):
                     with col:
                         idx = i + j
-                        # Pre-populate with labels from CSV
+                        # Pre-populate with current labels
                         label = st.text_input(
                             f"Node {idx} name",
                             value=node_labels[idx] if idx < len(node_labels) else f"Node {idx}",
-                            key=f"csv_node_label_{idx}"
+                            key=f"edit_node_label_{idx}"
                         )
-                        csv_node_labels.append(label)
+                        edited_node_labels.append(label)
+            
+            # Update labels if they've changed
+            if edited_node_labels != node_labels:
+                node_labels = edited_node_labels
+                st.session_state.current_labels = node_labels
         
         with tab2:
+            st.write("Edit adjacency matrix values (between 0 and 1):")
+            
             # Move Generate Network button to top
             generate_network = st.button("Generate Network", type="primary")
             
-            st.write("Uploaded Adjacency Matrix:")
-            df_display = pd.DataFrame(
-                adj_matrix,
-                index=csv_node_labels,
-                columns=csv_node_labels
-            )
-            # Update the format string to handle any data type
-            st.dataframe(df_display.style.format(lambda x: f"{float(x):.3f}" if isinstance(x, (int, float)) else str(x)))
+            # Create expandable sections for each row of the matrix
+            edited_matrix = []
+            for i in range(size):
+                with st.expander(f"Row {i + 1}: {node_labels[i]}", expanded=True):
+                    row = []
+                    # Organize matrix inputs in rows of 5
+                    for j in range(0, size, 5):
+                        cols = st.columns(min(5, size - j))
+                        for k, col in enumerate(cols):
+                            idx = j + k
+                            with col:
+                                val = st.text_input(
+                                    f"{node_labels[idx]}",
+                                    value=f"{adj_matrix[i][idx]:.3f}",
+                                    key=f"matrix_edit_{i}_{idx}",
+                                    help=f"Connection: {node_labels[i]} → {node_labels[idx]}"
+                                )
+                                try:
+                                    val_float = float(val)
+                                    if val_float < 0 or val_float > 1:
+                                        st.error("Value must be between 0 and 1")
+                                        val_float = 0
+                                except ValueError:
+                                    st.error("Invalid number")
+                                    val_float = 0
+                                row.append(val_float)
+                    edited_matrix.append(row)
             
-            # Store current matrix in session state
-            st.session_state.current_matrix = adj_matrix
-            st.session_state.current_labels = csv_node_labels
-            
-            # Move button logic here
+            # Update matrix if Generate Network is clicked
             if generate_network:
-                # Store in session state that network should be displayed
+                adj_matrix = pd.DataFrame(edited_matrix).values
+                st.session_state.current_matrix = adj_matrix
+                st.session_state.network_data = create_network(adj_matrix, node_labels)
                 st.session_state.show_network = True
-                st.session_state.network_data = create_network(adj_matrix, csv_node_labels)
-                # Update to use new query_params
-                st.query_params["tab"] = "network"
-        
+                
+                # Show matrix in an expander
+                with st.expander("View Adjacency Matrix", expanded=False):
+                    df_display = pd.DataFrame(
+                        adj_matrix,
+                        index=node_labels,
+                        columns=node_labels
+                    )
+                    st.dataframe(df_display.style.format("{:.3f}"))
+
         with tab3:
             if 'show_network' in st.session_state and st.session_state.show_network:
                 # Display network
